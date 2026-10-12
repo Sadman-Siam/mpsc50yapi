@@ -1,11 +1,15 @@
+from uuid import UUID
+
 from fastapi import APIRouter, HTTPException, status
 from sqlmodel import select
 
 from app.constants import SUBCOMMITTEE_NAMES
 from app.dependencies import CurrentAlumna, DBSession
 from app.helper import now
-from app.models import SponsorOffer, SubcommitteeApplication
+from app.models import OpenMicEntry, SponsorOffer, SubcommitteeApplication
 from app.schemas.involve import (
+    OpenMicEntryInformation,
+    OpenMicEntryInput,
     SubcommitteeApplicationInformation,
     SubcommitteeApplicationInput,
     SponsorOfferInformation,
@@ -130,3 +134,81 @@ def update_my_subcommittee_application(
     database_session.commit()
     database_session.refresh(application)
     return application
+
+
+@router.post(
+    "/openmic",
+    status_code=status.HTTP_201_CREATED,
+    response_model=OpenMicEntryInformation,
+)
+def create_openmic_entry(
+    data: OpenMicEntryInput, alumna: CurrentAlumna, database_session: DBSession
+) -> OpenMicEntry:
+    ensure_open("openmic", database_session, now=now)
+    count = len(
+        database_session.exec(
+            select(OpenMicEntry).where(OpenMicEntry.alumna_uuid == alumna.uuid)
+        ).all()
+    )
+    if count >= settings.openmic_entry_limit:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Open mic entry limit reached",
+        )
+    entry = OpenMicEntry(alumna_uuid=alumna.uuid, **data.model_dump())
+    database_session.add(entry)
+    database_session.commit()
+    database_session.refresh(entry)
+    return entry
+
+
+@router.get("/openmic/me", response_model=list[OpenMicEntryInformation])
+def read_my_openmic_entries(
+    alumna: CurrentAlumna, database_session: DBSession
+) -> list[OpenMicEntry]:
+    return database_session.exec(
+        select(OpenMicEntry).where(OpenMicEntry.alumna_uuid == alumna.uuid)
+        .order_by(OpenMicEntry.created_at.desc())
+    ).all()
+
+
+@router.put("/openmic/{entry_uuid}", response_model=OpenMicEntryInformation)
+def update_my_openmic_entry(
+    entry_uuid: UUID, data: OpenMicEntryInput, alumna: CurrentAlumna, database_session: DBSession
+) -> OpenMicEntry:
+    ensure_open("openmic", database_session, now=now)
+    entry = database_session.scalar(
+        select(OpenMicEntry).where(
+            OpenMicEntry.uuid == entry_uuid,
+            OpenMicEntry.alumna_uuid == alumna.uuid,
+        )
+    )
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Open mic entry not found",
+        )
+    for field, value in data.model_dump().items():
+        setattr(entry, field, value)
+    database_session.add(entry)
+    database_session.commit()
+    database_session.refresh(entry)
+    return entry
+
+
+@router.delete("/openmic/{entry_uuid}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_openmic_entry(entry_uuid: UUID, alumna: CurrentAlumna, database_session: DBSession) -> None:
+    ensure_open("openmic", database_session, now=now)
+    entry = database_session.scalar(
+        select(OpenMicEntry).where(
+            OpenMicEntry.uuid == entry_uuid,
+            OpenMicEntry.alumna_uuid == alumna.uuid,
+        )
+    )
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Open mic entry not found",
+        )
+    database_session.delete(entry)
+    database_session.commit()
