@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.constants import SUBCOMMITTEE_NAMES
 from app.types import SubmissionStatus
@@ -54,3 +55,49 @@ class SubcommitteeApplicationInformation(BaseModel):
     admin_note: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class SponsorOfferInput(BaseModel):
+    sponsor_type: Literal["individual", "company", "in_kind"]
+    sponsor_name: str = Field(min_length=1, max_length=200)
+    contact_person: str = Field(min_length=1, max_length=200)
+    phone: str = Field(min_length=5, max_length=16)
+    email: EmailStr
+    proposed_amount_bdt: int | None = Field(default=None, gt=0)
+    in_kind_description: str | None = Field(default=None, max_length=2000)
+    message: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_sponsor_fields(self):
+        if self.sponsor_type == "company" and not self.sponsor_name.strip():
+            raise ValueError("Company sponsorship requires a company name")
+        if self.sponsor_type == "in_kind" and not (self.in_kind_description or "").strip():
+            raise ValueError("In-kind sponsorship requires a description")
+        if self.sponsor_type != "in_kind" and self.proposed_amount_bdt is None:
+            raise ValueError("Proposed amount is required for cash sponsorship")
+        return self
+
+    @field_validator("sponsor_name", "contact_person", "message")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field cannot be blank")
+        return value
+
+
+class SponsorOfferInformation(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    uuid: UUID
+    sponsor_type: Literal["individual", "company", "in_kind"]
+    sponsor_name: str
+    contact_person: str
+    phone: str
+    email: EmailStr
+    proposed_amount_bdt: int | None
+    in_kind_description: str | None
+    message: str
+    status: SubmissionStatus
+    admin_note: str | None
+    created_at: datetime

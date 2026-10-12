@@ -4,14 +4,43 @@ from sqlmodel import select
 from app.constants import SUBCOMMITTEE_NAMES
 from app.dependencies import CurrentAlumna, DBSession
 from app.helper import now
-from app.models import SubcommitteeApplication
+from app.models import SponsorOffer, SubcommitteeApplication
 from app.schemas.involve import (
     SubcommitteeApplicationInformation,
     SubcommitteeApplicationInput,
+    SponsorOfferInformation,
+    SponsorOfferInput,
 )
 from app.services.deadlines import ensure_open
+from app.settings import settings
 
 router = APIRouter(prefix="/involve", tags=["Get Involved"])
+
+
+@router.post("/sponsor", status_code=status.HTTP_201_CREATED, response_model=SponsorOfferInformation)
+def create_sponsor_offer(
+    data: SponsorOfferInput, alumna: CurrentAlumna, database_session: DBSession
+) -> SponsorOffer:
+    ensure_open("sponsor", database_session, now=now)
+    count = len(database_session.exec(
+        select(SponsorOffer).where(SponsorOffer.alumna_uuid == alumna.uuid)
+    ).all())
+    if count >= settings.sponsor_offer_limit:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Sponsor offer limit reached")
+    offer = SponsorOffer(alumna_uuid=alumna.uuid, **data.model_dump())
+    database_session.add(offer)
+    database_session.commit()
+    database_session.refresh(offer)
+    return offer
+
+
+@router.get("/sponsor/me", response_model=list[SponsorOfferInformation])
+def read_my_sponsor_offers(alumna: CurrentAlumna, database_session: DBSession) -> list[SponsorOffer]:
+    return database_session.exec(
+        select(SponsorOffer)
+        .where(SponsorOffer.alumna_uuid == alumna.uuid)
+        .order_by(SponsorOffer.created_at.desc())
+    ).all()
 
 
 @router.get("/subcommittee/options", response_model=list[str])

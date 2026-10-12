@@ -43,6 +43,24 @@ class SubcommitteeApplication(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=now)
 
 
+class SponsorOffer(SQLModel, table=True):
+    __tablename__ = "sponsor_offers"  # type: ignore[assignment]
+
+    uuid: UUID = Field(default_factory=uuid4, primary_key=True)
+    alumna_uuid: UUID = Field(foreign_key="alumni.uuid", ondelete="CASCADE", index=True)
+    sponsor_type: str
+    sponsor_name: str
+    contact_person: str
+    phone: str = Field(max_length=16)
+    email: str
+    proposed_amount_bdt: int | None = Field(default=None)
+    in_kind_description: str | None = Field(default=None, sa_type=Text)
+    message: str = Field(sa_type=Text)
+    status: str = Field(default="submitted")
+    admin_note: str | None = Field(default=None, sa_type=Text)
+    created_at: datetime = Field(default_factory=now)
+
+
 class Alumna(SQLModel, table=True):
     __tablename__ = "alumni"  # type: ignore[assignment]
 
