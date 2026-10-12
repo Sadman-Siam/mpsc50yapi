@@ -88,5 +88,6 @@ class AlumnaRegister(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    full_name: str | None = None
-    phone_number: str | None = None
+    full_name: str | None = Field(default=None, min_length=2, max_length=150)
+    # Must match the Alumna.phone_number column width, as AlumnaRegister does.
+    phone_number: str | None = Field(default=None, max_length=16)

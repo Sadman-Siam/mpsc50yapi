@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
 from app.dependencies import CurrentAlumna, DBSession
-from app.helper import generate_reg_code, now
+from app.helper import generate_reg_code
 from app.models import (
     Acquaintance,
     Address,
@@ -29,6 +29,7 @@ from app.services.token import (
     ACCESS_TOKEN_TTL_SECONDS,
     decode_token,
     encode_access_token,
+    is_within_refresh_window,
 )
 from app.settings import settings
 
@@ -195,7 +196,9 @@ def logout():
     response = JSONResponse(
         status_code=status.HTTP_200_OK, content={"message": "Logged out successfully"}
     )
-    response.delete_cookie(settings.access_token_name)
+    response.delete_cookie(
+        settings.access_token_name, **settings.delete_access_token_config()
+    )
     return response
 
 
@@ -214,10 +217,15 @@ def refresh_access_token(request: Request, database_session: DBSession):
     try:
         payload = decode_token(access_token, verify_exp=False)
         uuid_str: str | None = payload.get("uuid")
-        exp_time: int | None = payload.get("exp")
-        if not uuid_str or not exp_time:
+        if not uuid_str:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload"
+            )
+
+        if not is_within_refresh_window(payload):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token is expired beyond the refresh window",
             )
 
         alumna = database_session.scalar(
@@ -228,12 +236,6 @@ def refresh_access_token(request: Request, database_session: DBSession):
         if not alumna:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload"
-            )
-
-        if exp_time < now().timestamp() - ACCESS_TOKEN_TTL_SECONDS:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"detail": "Token is expired beyond the refresh window"},
             )
 
         new_access_token = encode_access_token({"uuid": uuid_str})
@@ -248,11 +250,13 @@ def refresh_access_token(request: Request, database_session: DBSession):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token"
+        ) from e
 
 
 @router.get("/verify-token", summary="Verify the validity of an access token")
-def verify_token(request: Request) -> dict[str, Any]:
+def verify_token(request: Request, database_session: DBSession) -> dict[str, Any]:
     access_token = request.cookies.get(settings.access_token_name)
     if not access_token:
         raise HTTPException(
@@ -267,9 +271,26 @@ def verify_token(request: Request) -> dict[str, Any]:
                 detail="Invalid token payload",
             )
 
-        return {"message": "Validated", "data": {"token": access_token}}
+        # A signature-valid token is not enough: the account must still exist
+        # and be active, otherwise a cancelled/deleted alumna stays "validated".
+        alumna = database_session.scalar(
+            select(Alumna).where(
+                Alumna.uuid == UUID(uuid_str), Alumna.status == "confirmed"
+            )
+        )
+        if not alumna:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account is not active",
+            )
+
+        return {"message": "Validated", "data": {"uuid": str(alumna.uuid)}}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token"
+        ) from e
 
 
 @router.get(
