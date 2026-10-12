@@ -16,6 +16,15 @@ class Payment(SQLModel, table=True):
     paid_at: datetime = Field(default_factory=now, index=True)
 
 
+class EventDeadline(SQLModel, table=True):
+    __tablename__ = "event_deadlines"  # type: ignore[assignment]
+
+    key: str = Field(primary_key=True)
+    label: str
+    deadline_at: datetime
+    is_extended: bool = False
+
+
 class Alumna(SQLModel, table=True):
     __tablename__ = "alumni"  # type: ignore[assignment]
 
