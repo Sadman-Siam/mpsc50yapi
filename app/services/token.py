@@ -7,6 +7,8 @@ from app.helper import now
 from app.settings import settings
 
 ACCESS_TOKEN_TTL_SECONDS: int = 60 * 60 * 24
+# Grace period after expiry during which /auth/refresh-token still accepts a token.
+REFRESH_WINDOW_SECONDS: int = 60 * 60 * 24 * 7
 
 
 def encode_access_token(
@@ -36,3 +38,14 @@ def decode_token(token: str, verify_exp: bool = True) -> dict[str, Any]:
         leeway=30,
         options={"verify_exp": verify_exp},
     )
+
+
+def is_within_refresh_window(payload: dict[str, Any]) -> bool:
+    """A token may be refreshed only while it is expired by less than
+    REFRESH_WINDOW_SECONDS. Previously this compared `exp` against
+    `now - TTL`, which could never trigger before the token was doubly expired."""
+    exp_time = payload.get("exp")
+    if not isinstance(exp_time, int):
+        return False
+
+    return now().timestamp() - exp_time <= REFRESH_WINDOW_SECONDS

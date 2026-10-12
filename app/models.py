@@ -10,7 +10,7 @@ class Payment(SQLModel, table=True):
     __tablename__ = "payments"  # type: ignore[assignment]
 
     uuid: UUID = Field(default_factory=uuid4, primary_key=True)
-    amount: int = Field(gt=0)
+    amount: int
     transaction_reference: str
     status: str
     paid_at: datetime = Field(default_factory=now, index=True)
@@ -73,7 +73,9 @@ class AlumniProfile(SQLModel, table=True):
     )
     reg_code: str = Field(unique=True)
     student_id: str | None = Field(default=None)
-    batch_year: int = Field(ge=1976, le=now().year)
+    # Range is validated in app.schemas.alumni (AlumnaRegister.batch_year).
+    # Pydantic constraints are ignored on SQLModel table=True columns.
+    batch_year: int
     tee_shirt_size: str
 
     # foreign keys

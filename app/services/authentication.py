@@ -4,7 +4,7 @@ from argon2 import PasswordHasher
 from fastapi import HTTPException, Request, status
 from sqlmodel import select
 
-from app.dependencies import DBSession
+from app.database import DBSession
 from app.models import Alumna
 from app.services.token import decode_token
 from app.settings import settings
@@ -34,8 +34,12 @@ def _get_uuid_from_token(token: str) -> UUID:
             )
 
         return UUID(uuid_str)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token"
+        ) from e
 
 
 def get_current_alumna(
