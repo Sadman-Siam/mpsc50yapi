@@ -158,6 +158,9 @@ class AlumniProfile(SQLModel, table=True):
     )
     reg_code: str = Field(unique=True)
     student_id: str | None = Field(default=None)
+    referred_by_alumna_uuid: UUID | None = Field(
+        default=None, foreign_key="alumni.uuid", ondelete="SET NULL", index=True
+    )
     # Range is validated in app.schemas.alumni (AlumnaRegister.batch_year).
     # Pydantic constraints are ignored on SQLModel table=True columns.
     batch_year: int

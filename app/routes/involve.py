@@ -7,11 +7,15 @@ from app.constants import SUBCOMMITTEE_NAMES
 from app.dependencies import CurrentAlumna, DBSession
 from app.helper import now
 from app.models import (
+    Alumna,
+    AlumniProfile,
     OpenMicEntry,
     SponsorOffer,
     StallApplication,
     SubcommitteeApplication,
 )
+from app.schemas.referrals import MyReferralsInformation
+from app.services.referral_queries import referrals_for
 from app.schemas.involve import (
     OpenMicEntryInformation,
     OpenMicEntryInput,
@@ -26,6 +30,21 @@ from app.services.deadlines import ensure_open
 from app.settings import settings
 
 router = APIRouter(prefix="/involve", tags=["Get Involved"])
+
+
+@router.get("/referrals/me", response_model=MyReferralsInformation)
+def read_my_referrals(alumna: CurrentAlumna, database_session: DBSession):
+    profile = database_session.scalar(
+        select(AlumniProfile).where(AlumniProfile.alumna_uuid == alumna.uuid)
+    )
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Alumna profile not found")
+    referrals, qualifying_dates = referrals_for(database_session, alumna.uuid)
+    return MyReferralsInformation(
+        referral_code=profile.reg_code,
+        referral_count=len(qualifying_dates),
+        referrals=referrals,
+    )
 
 
 @router.post(

@@ -91,6 +91,9 @@ duplicate; a `failed` payment gets a fresh reference. Once a payment is
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | POST | `/auth/register` | – | Register with optional work profile, address and acquaintances |
+| GET | `/involve/referrals/me` | cookie | My referral code, qualifying count and referred account names/statuses |
+| GET | `/admin/referrals` | admin | Referral leaderboard |
+| GET | `/admin/referrals/{alumna_uuid}` | admin | Referral details for one alumna |
 | POST | `/auth/login` | – | Authenticate and set the access-token cookie |
 | POST | `/auth/logout` | – | Clear the access-token cookie |
 | POST | `/auth/refresh-token` | cookie | Reissue a token within the refresh window |
@@ -109,6 +112,13 @@ duplicate; a `failed` payment gets a fresh reference. Once a payment is
 | POST | `/payments/ipn` | – | SSLCommerz server-to-server notification |
 | GET | `/public/event` | – | Static event information |
 | GET | `/public/statistics` | – | Aggregate counts, no personal data |
+
+Registration accepts an optional `referrer` field containing an existing
+alumna's `reg_code`. Frontends can share links such as
+`https://example.com/register?referral=REGISTRATION_CODE` and submit that value
+as `referrer` in `POST /auth/register`. Referral counts include referred
+accounts whose status is `confirmed`; the `counts_as_referral` rule is isolated
+in `app/services/referrals.py` and can instead require completed payment.
 
 ## Migrations
 
