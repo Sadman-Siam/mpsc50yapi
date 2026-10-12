@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from sqlalchemy import Text
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.helper import now
@@ -23,6 +24,23 @@ class EventDeadline(SQLModel, table=True):
     label: str
     deadline_at: datetime
     is_extended: bool = False
+
+
+class SubcommitteeApplication(SQLModel, table=True):
+    __tablename__ = "subcommittee_applications"  # type: ignore[assignment]
+
+    uuid: UUID = Field(default_factory=uuid4, primary_key=True)
+    alumna_uuid: UUID = Field(
+        foreign_key="alumni.uuid", ondelete="CASCADE", unique=True
+    )
+    first_choice: str
+    second_choice: str | None = Field(default=None)
+    motivation: str = Field(sa_type=Text)
+    availability_notes: str | None = Field(default=None, max_length=500)
+    status: str = Field(default="submitted")
+    admin_note: str | None = Field(default=None, sa_type=Text)
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
 
 
 class Alumna(SQLModel, table=True):

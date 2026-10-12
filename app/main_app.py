@@ -6,7 +6,7 @@ from sqlmodel import SQLModel
 
 from app import models  # noqa: F401  (registers all tables)
 from app.database import engine
-from app.routes import admin, auth, payment, public
+from app.routes import admin, auth, involve, payment, public
 from app.settings import settings
 
 DESCRIPTION = """
@@ -67,6 +67,7 @@ def create_app(*, create_tables: bool = True) -> FastAPI:
     application.include_router(admin.router)
     application.include_router(payment.router)
     application.include_router(public.router)
+    application.include_router(involve.router)
 
     @application.get("/", tags=["Health"])
     def health_check():
