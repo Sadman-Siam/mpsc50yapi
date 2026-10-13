@@ -15,9 +15,7 @@ def test_list_with_admin_secret(client, registration_payload):
     assert len(response.json()) == 1
 
 
-def test_admin_can_see_pending_accounts_that_cannot_log_in(
-    client, registration_payload
-):
+def test_admin_can_see_pending_accounts(client, registration_payload):
     """Registration creates a pending account; the admin list is the only way
     to see and approve it."""
     client.post("/auth/register", json=registration_payload)
@@ -40,12 +38,14 @@ def test_status_filter_rejects_unknown_value(client):
     assert response.status_code == 422
 
 
-def test_status_update_unblocks_login(client, registration_payload, admin_headers):
+def test_status_update_confirms_account(client, registration_payload, admin_headers):
     body = client.post("/auth/register", json=registration_payload).json()
 
+    # Registration itself issues the access cookie, so the alumna can pay
+    # before approval. Approval is the last step, not a login prerequisite.
     assert client.post(
         "/auth/login", json={"email": "ayesha@example.com", "password": "secret123"}
-    ).status_code == 403
+    ).status_code == 200
 
     approved = client.patch(
         f"/admin/alumnae/{body['uuid']}/status",
