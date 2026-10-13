@@ -61,6 +61,23 @@ class SponsorOffer(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now)
 
 
+class OpenMicEntry(SQLModel, table=True):
+    __tablename__ = "openmic_entries"  # type: ignore[assignment]
+
+    uuid: UUID = Field(default_factory=uuid4, primary_key=True)
+    alumna_uuid: UUID = Field(foreign_key="alumni.uuid", ondelete="CASCADE", index=True)
+    performance_type: str
+    title_or_description: str = Field(sa_type=Text)
+    duration_minutes: int
+    needs_equipment_or_accompaniment: bool
+    equipment_notes: str | None = Field(default=None, sa_type=Text)
+    performance_link: str | None = Field(default=None, max_length=2048)
+    status: str = Field(default="submitted")
+    admin_note: str | None = Field(default=None, sa_type=Text)
+    scheduled_slot: str | None = Field(default=None, max_length=200)
+    created_at: datetime = Field(default_factory=now)
+
+
 class Alumna(SQLModel, table=True):
     __tablename__ = "alumni"  # type: ignore[assignment]
 

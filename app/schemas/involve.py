@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.constants import SUBCOMMITTEE_NAMES
+from app.settings import settings
 from app.types import SubmissionStatus
 
 
@@ -100,4 +101,64 @@ class SponsorOfferInformation(BaseModel):
     message: str
     status: SubmissionStatus
     admin_note: str | None
+    created_at: datetime
+
+
+class OpenMicEntryInput(BaseModel):
+    performance_type: Literal[
+        "singer", "musician", "poet", "storyteller", "stand-up", "dancer", "other"
+    ]
+    title_or_description: str = Field(min_length=1, max_length=1000)
+    duration_minutes: int = Field(ge=1)
+    needs_equipment_or_accompaniment: bool
+    equipment_notes: str | None = Field(default=None, max_length=1000)
+    performance_link: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("title_or_description", "equipment_notes")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value and value == "":
+            raise ValueError("This field cannot be blank")
+        return value
+
+    @field_validator("duration_minutes")
+    @classmethod
+    def validate_duration(cls, value: int) -> int:
+        if value > settings.openmic_max_duration_minutes:
+            raise ValueError(
+                f"Duration must not exceed {settings.openmic_max_duration_minutes} minutes"
+            )
+        return value
+
+    @field_validator("performance_link")
+    @classmethod
+    def validate_link(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        from urllib.parse import urlparse
+
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("Performance link must be an http or https URL")
+        return value
+
+
+class OpenMicEntryInformation(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    uuid: UUID
+    performance_type: Literal[
+        "singer", "musician", "poet", "storyteller", "stand-up", "dancer", "other"
+    ]
+    title_or_description: str
+    duration_minutes: int
+    needs_equipment_or_accompaniment: bool
+    equipment_notes: str | None
+    performance_link: str | None
+    status: SubmissionStatus
+    admin_note: str | None
+    scheduled_slot: str | None
     created_at: datetime
