@@ -1,10 +1,13 @@
+from datetime import datetime
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlmodel import func, select
 
 from app.database import DBSession
-from app.models import Alumna, AlumniProfile
 from app.settings import settings
+from app.models import Alumna, AlumniProfile, EventDeadline
+from app.services.deadlines import deadline_is_open
 
 router = APIRouter(prefix="/public", tags=["Public Routes"])
 
@@ -24,6 +27,14 @@ class PublicStatistics(BaseModel):
     confirmed_alumnae: int
     total_registrations: int
     batch_years_covered: int
+
+
+class PublicDeadline(BaseModel):
+    key: str
+    label: str
+    deadline_at: datetime
+    is_extended: bool
+    is_open: bool
 
 
 EVENT_INFORMATION = EventInformation(
@@ -66,3 +77,18 @@ def get_statistics(database_session: DBSession) -> PublicStatistics:
         total_registrations=int(total or 0),
         batch_years_covered=int(distinct_batches or 0),
     )
+
+
+@router.get("/deadlines", response_model=list[PublicDeadline])
+def get_deadlines(database_session: DBSession) -> list[PublicDeadline]:
+    deadlines = database_session.scalars(select(EventDeadline).order_by(EventDeadline.key)).all()
+    return [
+        PublicDeadline(
+            key=item.key,
+            label=item.label,
+            deadline_at=item.deadline_at,
+            is_extended=item.is_extended,
+            is_open=deadline_is_open(item),
+        )
+        for item in deadlines
+    ]

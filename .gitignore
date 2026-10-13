@@ -189,3 +189,7 @@ uv.lock
 .python-version
 users_backup.json
 tmp*
+*.db
+*.db*
+alembic/
+alembic*

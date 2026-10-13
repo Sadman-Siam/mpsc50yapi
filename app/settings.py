@@ -34,8 +34,14 @@ class Settings(BaseSettings):
         default="http://localhost:8000", validation_alias="API_URL"
     )
     event_fee_bdt: int = Field(default=1500, validation_alias="EVENT_FEE_BDT")
-    # A real field, not os.getenv: pydantic-settings loads .env here, not into
-    # os.environ, so an os.getenv check would ignore it.
+    sponsor_offer_limit: int = Field(default=3, validation_alias="SPONSOR_OFFER_LIMIT", gt=0)
+    openmic_entry_limit: int = Field(default=2, validation_alias="OPENMIC_ENTRY_LIMIT", gt=0)
+    openmic_max_duration_minutes: int = Field(
+        default=10, validation_alias="OPENMIC_MAX_DURATION_MINUTES", gt=0
+    )
+    # Must be a real field, not an os.getenv lookup: pydantic-settings loads
+    # .env into this object, not into os.environ, so an os.getenv check would
+    # silently ignore the value in .env.
     dev_mode: bool = Field(default=False, validation_alias="DEV_MODE")
 
     @field_validator("dev_mode", mode="before")
