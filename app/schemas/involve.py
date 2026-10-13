@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 
 from app.constants import SUBCOMMITTEE_NAMES
 from app.settings import settings
-from app.types import SubmissionStatus
+from app.types import StallApplicationStatus, StallFeeStatus, SubmissionStatus
 
 
 class SubcommitteeApplicationInput(BaseModel):
@@ -162,3 +162,65 @@ class OpenMicEntryInformation(BaseModel):
     admin_note: str | None
     scheduled_slot: str | None
     created_at: datetime
+
+
+class StallApplicationInput(BaseModel):
+    stall_name: str = Field(min_length=1, max_length=200)
+    category: Literal["food", "fashion", "books", "crafts", "services", "other"]
+    description: str = Field(min_length=1, max_length=3000)
+    products: list[str] = Field(min_length=1, max_length=100)
+    space_needs: str = Field(min_length=1, max_length=1000)
+    power_needs: str = Field(min_length=1, max_length=1000)
+    number_of_helpers: int = Field(ge=0, le=100)
+    contact_phone: str = Field(min_length=5, max_length=16)
+    website_or_social_link: str | None = Field(default=None, max_length=2048)
+
+    @field_validator(
+        "stall_name", "description", "space_needs", "power_needs", "contact_phone"
+    )
+    @classmethod
+    def strip_nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field cannot be blank")
+        return value
+
+    @field_validator("products")
+    @classmethod
+    def validate_products(cls, value: list[str]) -> list[str]:
+        products = [product.strip() for product in value]
+        if any(not product for product in products):
+            raise ValueError("Products cannot contain blank items")
+        return products
+
+    @field_validator("website_or_social_link")
+    @classmethod
+    def validate_website_or_social_link(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        from urllib.parse import urlparse
+
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("Website or social link must be an http or https URL")
+        return value
+
+
+class StallApplicationInformation(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    uuid: UUID
+    stall_name: str
+    category: Literal["food", "fashion", "books", "crafts", "services", "other"]
+    description: str
+    products: list[str]
+    space_needs: str
+    power_needs: str
+    number_of_helpers: int
+    contact_phone: str
+    website_or_social_link: str | None
+    status: StallApplicationStatus
+    stall_fee_status: StallFeeStatus
+    admin_note: str | None
+    created_at: datetime
+    updated_at: datetime

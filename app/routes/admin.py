@@ -12,6 +12,8 @@ from app.schemas.alumni import (
     AlumniProfileInformation,
     WorkProfileInformation,
 )
+from app.schemas.referrals import ReferralDrilldown, ReferralLeaderboardEntry
+from app.services.referral_queries import referrals_for
 from app.types import AccountStatus
 
 router = APIRouter(
@@ -19,6 +21,63 @@ router = APIRouter(
     tags=["Administration Routes"],
     dependencies=[],  # auth applied per-route via AdminSecret
 )
+
+
+@router.get("/referrals", response_model=list[ReferralLeaderboardEntry])
+def referral_leaderboard(
+    _: AdminSecret, database_session: DBSession
+) -> list[ReferralLeaderboardEntry]:
+    profiles = database_session.scalars(
+        select(AlumniProfile).where(AlumniProfile.alumna_uuid.is_not(None))
+    ).all()
+    entries = []
+    for profile in profiles:
+        alumna = database_session.get(Alumna, profile.alumna_uuid)
+        if not alumna:
+            continue
+        _, dates = referrals_for(database_session, alumna.uuid)
+        entries.append(
+            ReferralLeaderboardEntry(
+                alumna_uuid=alumna.uuid,
+                full_name=alumna.full_name,
+                referral_code=profile.reg_code,
+                referral_count=len(dates),
+                earliest_qualifying_referral=min(dates) if dates else None,
+            )
+        )
+    return sorted(
+        entries,
+        key=lambda entry: (
+            -entry.referral_count,
+            (
+                entry.earliest_qualifying_referral.timestamp()
+                if entry.earliest_qualifying_referral
+                else float("inf")
+            ),
+            str(entry.alumna_uuid),
+        ),
+    )
+
+
+@router.get("/referrals/{alumna_uuid}", response_model=ReferralDrilldown)
+def referral_drilldown(
+    alumna_uuid: UUID, _: AdminSecret, database_session: DBSession
+) -> ReferralDrilldown:
+    alumna = database_session.get(Alumna, alumna_uuid)
+    profile = database_session.scalar(
+        select(AlumniProfile).where(AlumniProfile.alumna_uuid == alumna_uuid)
+    )
+    if not alumna or not profile:
+        raise HTTPException(status_code=404, detail="Alumna not found")
+    referrals, dates = referrals_for(database_session, alumna_uuid)
+    return ReferralDrilldown(
+        alumna_uuid=alumna.uuid,
+        full_name=alumna.full_name,
+        referral_code=profile.reg_code,
+        referral_count=len(dates),
+        earliest_qualifying_referral=min(dates) if dates else None,
+        referrals=referrals,
+    )
 
 
 def _full_information(alumna: Alumna, database_session: DBSession) -> AlumnaInformation:

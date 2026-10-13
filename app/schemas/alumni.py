@@ -81,6 +81,7 @@ class AlumnaRegister(BaseModel):
     tee_shirt_size: TeeShirtSize
     student_id: str | None = None
     reg_code: str | None = None
+    referrer: str | None = Field(default=None, min_length=1, max_length=64)
 
     work_profile: WorkProfileCreate | None = None
     address: AddressCreate | None = None

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Text
+from sqlalchemy import JSON, Text
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.helper import now
@@ -78,6 +78,29 @@ class OpenMicEntry(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now)
 
 
+class StallApplication(SQLModel, table=True):
+    __tablename__ = "stall_applications"  # type: ignore[assignment]
+
+    uuid: UUID = Field(default_factory=uuid4, primary_key=True)
+    alumna_uuid: UUID = Field(
+        foreign_key="alumni.uuid", ondelete="CASCADE", unique=True
+    )
+    stall_name: str = Field(max_length=200)
+    category: str
+    description: str = Field(sa_type=Text)
+    products: list[str] = Field(sa_type=JSON)
+    space_needs: str = Field(sa_type=Text)
+    power_needs: str = Field(sa_type=Text)
+    number_of_helpers: int
+    contact_phone: str = Field(max_length=16)
+    website_or_social_link: str | None = Field(default=None, max_length=2048)
+    status: str = Field(default="applied")
+    stall_fee_status: str = Field(default="pending")
+    admin_note: str | None = Field(default=None, sa_type=Text)
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
 class Alumna(SQLModel, table=True):
     __tablename__ = "alumni"  # type: ignore[assignment]
 
@@ -135,6 +158,9 @@ class AlumniProfile(SQLModel, table=True):
     )
     reg_code: str = Field(unique=True)
     student_id: str | None = Field(default=None)
+    referred_by_alumna_uuid: UUID | None = Field(
+        default=None, foreign_key="alumni.uuid", ondelete="SET NULL", index=True
+    )
     # Range is validated in app.schemas.alumni (AlumnaRegister.batch_year).
     # Pydantic constraints are ignored on SQLModel table=True columns.
     batch_year: int

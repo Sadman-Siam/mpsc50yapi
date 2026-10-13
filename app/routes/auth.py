@@ -114,6 +114,29 @@ def register(data: AlumnaRegister, database_session: DBSession):
             detail="This registration code is already in use",
         )
 
+    referrer = None
+    if data.referrer:
+        if data.referrer == reg_code:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="An alumna cannot refer herself",
+            )
+        referrer = database_session.scalar(
+            select(AlumniProfile).where(AlumniProfile.reg_code == data.referrer)
+        )
+        if not referrer:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Referrer registration code not found",
+            )
+        if not referrer.alumna_uuid or not database_session.get(
+            Alumna, referrer.alumna_uuid
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Referrer registration code is not linked to an alumna",
+            )
+
     alumna = Alumna(
         full_name=data.full_name,
         email=email,
@@ -143,6 +166,7 @@ def register(data: AlumnaRegister, database_session: DBSession):
         student_id=data.student_id,
         batch_year=data.batch_year,
         tee_shirt_size=data.tee_shirt_size,
+        referred_by_alumna_uuid=referrer.alumna_uuid if referrer else None,
         work_profile_uuid=work_profile.uuid if work_profile else None,
         address_uuid=address.uuid if address else None,
     )
