@@ -48,22 +48,73 @@ All variables are documented in [.env.example](./.env.example). Required:
 
 ## Account lifecycle
 
-Registration creates an account with `status="pending"`, and `POST /auth/login`
-only admits `status="confirmed"` accounts. Approve new registrations through:
+An alumna registers, pays the participation fee, and is then approved by an
+admin. Approval is the last step, not a gate on payment.
+
+Registration creates an account with `status="pending"` and issues the access
+cookie, so the client can go straight from `POST /auth/register` to
+`POST /payments/initiate` without logging in. A `pending` account may log in,
+pay, and view its own record; admin approval is what promotes it to
+`confirmed`.
+
+Approve new registrations through:
 
 ```bash
 curl -X PATCH "http://localhost:8000/admin/alumnae/<uuid>/status?new_status=confirmed" \
   -H "X-Admin-Secret: $ADMIN_SECRET"
 ```
 
-Use `status=cancelled` to deactivate an account; both `/auth/login` and
-`/auth/verify-token` reject non-confirmed accounts immediately.
+Use `status=cancelled` to deactivate an account. `cancelled` is the only status
+that is refused: `/auth/login`, `/auth/verify-token`, `/auth/refresh-token` and
+every `/payments/*` route reject a cancelled alumna immediately.
+
+## Admin panel authentication
+
+`/admin/*` accepts either credential:
+
+- **A session cookie.** `POST /admin/login` with `{"admin_secret": "..."}`
+  compares against `ADMIN_SECRET` in constant time and returns a dedicated
+  httpOnly cookie (`ADMIN_TOKEN_NAME`, 8 hours). This is what the browser panel
+  uses, so the secret is never handed to browser JavaScript or stored in
+  `localStorage`.
+- **The `X-Admin-Secret` header**, unchanged, for scripted access:
+
+```bash
+curl "http://localhost:8000/admin/alumnae" -H "X-Admin-Secret: $ADMIN_SECRET"
+```
+
+The two sessions are separate. An admin token carries an `admin` claim and no
+`uuid`, and it is read from a different cookie than the alumna session, so
+neither credential is accepted by the other's routes. An unset `ADMIN_SECRET`
+fails closed: every admin request is rejected rather than allowing an empty
+secret.
+
+## Payment visibility for admins
+
+Every row of `GET /admin/alumnae` carries a `payment` summary:
+
+```json
+"payment": {
+  "has_paid": true,
+  "latest_status": "completed",
+  "amount": 1500,
+  "transaction_reference": "MPSC50-...",
+  "paid_at": "2026-10-13T10:00:00Z"
+}
+```
+
+With the register → pay → approve flow this is what the panel sorts and filters
+on. When an alumna has several payments, a `completed` one is reported in
+preference to a later failure, because a settled payment takes its timestamp
+from the gateway while a failure keeps its creation time — ordering on time
+alone would let a failure hide a success.
 
 ## Payment flow
 
 The redirect wiring matters, so it is worth stating explicitly:
 
-1. The frontend calls `POST /payments/initiate`.
+1. The frontend calls `POST /payments/initiate`, immediately after registering.
+   A `pending` alumna is allowed to pay.
 2. The API creates a `Payment` row and asks SSLCommerz for a checkout session.
    `success_url` and `ipn_url` point at **the API**, not the frontend.
 3. The alumna pays on the gateway.
@@ -80,7 +131,8 @@ transaction, and the payment would appear to fail even though money moved.
 A transaction is only accepted when the gateway validation reports `VALID`,
 the same `tran_id`, and **the expected amount and currency**. Paying 1 BDT
 does not settle a 1500 BDT fee. The amount comes from `EVENT_FEE_BDT` on the
-server and is never accepted from the client.
+server and is never accepted from the client. `GET /public/event` reports the
+same value, so the advertised price cannot drift from the charged one.
 
 Re-initiating reuses an existing `unpaid` payment rather than creating a
 duplicate; a `failed` payment gets a fresh reference. Once a payment is
@@ -90,7 +142,7 @@ duplicate; a `failed` payment gets a fresh reference. Once a payment is
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| POST | `/auth/register` | – | Register with optional work profile, address and acquaintances |
+| POST | `/auth/register` | – | Register, then set the access-token cookie |
 | POST | `/auth/login` | – | Authenticate and set the access-token cookie |
 | POST | `/auth/logout` | – | Clear the access-token cookie |
 | POST | `/auth/refresh-token` | cookie | Reissue a token within the refresh window |
@@ -98,16 +150,19 @@ duplicate; a `failed` payment gets a fresh reference. Once a payment is
 | GET | `/auth/me` | cookie | Current alumna with nested profile |
 | PUT | `/auth/update-profile` | cookie | Update name and phone number |
 | PUT | `/auth/update-password` | cookie | Change password |
-| GET | `/admin/alumnae` | admin | List alumnae, filterable by `status` |
+| POST | `/admin/login` | – | Exchange `ADMIN_SECRET` for an admin session cookie |
+| POST | `/admin/logout` | – | Clear the admin session cookie |
+| GET | `/admin/session` | admin | Confirm the admin session is still valid |
+| GET | `/admin/alumnae` | admin | List alumnae with a payment summary, filterable by `status` |
 | GET | `/admin/alumnae/counts` | admin | Counts grouped by status |
 | PATCH | `/admin/alumnae/{uuid}/status` | admin | Approve, cancel or reactivate |
-| POST | `/payments/initiate` | cookie | Create an SSLCommerz session |
+| POST | `/payments/initiate` | cookie | Create an SSLCommerz session (allowed while `pending`) |
 | GET | `/payments/me` | cookie | List the alumna's payments |
 | GET | `/payments/{uuid}` | cookie | Get one payment (ownership enforced) |
 | POST | `/payments/{uuid}/confirm` | cookie | Manually confirm an offline payment |
 | POST | `/payments/callback` | – | Browser redirect; validates then forwards to the frontend |
 | POST | `/payments/ipn` | – | SSLCommerz server-to-server notification |
-| GET | `/public/event` | – | Static event information |
+| GET | `/public/event` | – | Static event information, fee from `EVENT_FEE_BDT` |
 | GET | `/public/statistics` | – | Aggregate counts, no personal data |
 
 ## Migrations
@@ -132,12 +187,19 @@ uv run mypy app                     # type check
 
 ## Known gaps
 
-- `/admin/*` is protected by one shared secret with no audit trail of who
-  approved or cancelled an account. Introduce real admin users before this
-  handles live registrations.
+- `/admin/*` is protected by one shared secret with no record of who approved an
+  account. The panel authenticates with a session cookie, but the credential is
+  still a single shared secret, so an approval cannot be attributed to a person.
 - The payment flow is covered by tests that stub the gateway; it has not been
   exercised against the real SSLCommerz sandbox.
 - Refunds are represented in the `PaymentStatus` type but not implemented.
+- `pending` covers both "registered, not paid" and "paid, awaiting approval".
+  The `payment` summary on each row distinguishes them, but the status itself
+  does not.
+- There is no search, pagination beyond `limit`/`offset`, or bulk approval in the
+  listing.
+- A `pending` alumna may read and edit her own record via `/auth/me` and
+  `/auth/update-profile`, since only `cancelled` is refused.
 
 Author:  Docufy <info@docufybd.com>
 
